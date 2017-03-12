@@ -26,12 +26,32 @@ func TestSrtToWebVtt(t *testing.T) {
 		"2\n00:00:02,147 --> 00:00:04,257\n♪♪♪♪\n\n":                                        "00:02.147 --> 00:04.257\n♪♪♪♪\n\n",
 	}
 	for k, v := range patterns {
-		result := SrtToWebVtt(k)
+		result, err := SrtToWebVtt(k)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if result != v {
 			t.Errorf("excepted %q get %q", v, result)
 		}
 	}
 
+}
+
+func TestWriteTo(t *testing.T) {
+	f, err := os.Open("test/test2.srt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	r, err := NewReader(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := bytes.NewBuffer(nil)
+	n, err := r.WriteTo(buf)
+	if err == nil || n != 8 {
+		t.Fatalf("written %v, err %v, buf %s", n, err, buf.String())
+	}
 }
 
 func check(e error) {
