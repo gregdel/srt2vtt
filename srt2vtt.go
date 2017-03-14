@@ -3,7 +3,9 @@ package srt2vtt
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
+	"golang.org/x/net/html"
 	"io"
 	_ "log"
 	_ "os"
@@ -30,27 +32,91 @@ func SrtScanner(data []byte, atEOF bool) (advance int, token []byte, err error) 
 	return 0, nil, nil
 }
 
-func ConvertTimeToWebVtt(t string) string {
+func ConvertTimeToWebVtt(t string) (string, error) {
 	t = strings.Replace(t, ",", ".", -1)
 	timing := strings.Split(t, " --> ")
 	for i, v := range timing {
+		if len(v) < 3 {
+			return "", errors.New("Invalid time line")
+		}
 		if v[:3] == "00:" {
 			timing[i] = v[3:]
 		}
 	}
-	return strings.Join(timing, " --> ")
+	return strings.Join(timing, " --> "), nil
 }
 
 func SrtToWebVtt(l string) (string, error) {
-	ref := l
 	l = strings.Replace(l, "\r\n", "\n", -1)
 	lines := strings.SplitN(l, "\n", 3)
 	if len(lines) < 2 {
-		return "", fmt.Errorf("Invalid line format: |%s|", ref)
+		return "", errors.New("Invalid line format")
 	}
+	var err error
 	lines = lines[1:]
-	lines[0] = ConvertTimeToWebVtt(lines[0])
+	lines[0], err = ConvertTimeToWebVtt(lines[0])
+	if err != nil {
+		return "", err
+	}
+	lines[1], err = cleanTags(lines[1])
+	if err != nil {
+		return lines[1], err
+	}
 	return fmt.Sprintf("%s\n%s", lines[0], lines[1]), nil
+}
+
+// cleanTags replaces invalid tags with <b> and encodes characters such &
+// into html entities (e.g. &amp;) to avoid conflicts with VTT annotations.
+// TODO: Parse font tags and replace them with Cue STYLE annotations.
+func cleanTags(s string) (string, error) {
+	// https://developer.mozilla.org/en-US/docs/Web/API/WebVTT_API#Cue_payload_text_tags
+	// Only the following tags are the HTML tags allowed in a cue
+	// and require opening and closing tags.
+	// Class tag (<c></c>)
+	// Italics tag (<i></i>)
+	// Bold tag (<b></b>)
+	// Underline tag (<u></u>)
+	// Ruby tag (<ruby></ruby>)
+	// Ruby text tag (<rt></rt>)
+	// Voice tag (<v></v>)
+	// Lang
+	doc, err := html.Parse(strings.NewReader(s))
+	if err != nil {
+		return "", errors.New("cleanTags-0: " + err.Error())
+	}
+	var f func(*html.Node)
+	f = func(n *html.Node) {
+		switch n.Type {
+		case html.ElementNode:
+			switch n.Data {
+			case "html", "head", "body":
+				// These are injected automatically by the html package.
+				// We remove them before return
+			case "b", "c", "i", "ruby", "rt", "<u>":
+				// Only <v> and <lang> can have an annotation.
+				n.Attr = nil
+			case "v", "lang":
+			default:
+				// if the tag is not allowed it is converted to "<b>"
+				n.Data = "b"
+				n.Attr = nil
+			}
+		case html.TextNode:
+			// html.Render already escapes the text nodes
+			//n.Data = template.HTMLEscapeString(n.Data)
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			f(c)
+		}
+	}
+	f(doc)
+	buf := bytes.NewBuffer(nil)
+	if err = html.Render(buf, doc); err != nil {
+		return "", err
+	}
+	bs := strings.TrimPrefix(buf.String(), "<html><head></head><body>")
+	bs = strings.TrimSuffix(bs, "</body></html>")
+	return bs, nil
 }
 
 type Reader struct {

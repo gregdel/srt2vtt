@@ -12,7 +12,10 @@ func TestConvertTimeToWebVtt(t *testing.T) {
 		"01:00:00,579 --> 01:00:02,145": "01:00:00.579 --> 01:00:02.145",
 	}
 	for k, v := range patterns {
-		result := ConvertTimeToWebVtt(k)
+		result, err := ConvertTimeToWebVtt(k)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if result != v {
 			t.Errorf("excepted %q get %q", v, result)
 		}
@@ -21,10 +24,13 @@ func TestConvertTimeToWebVtt(t *testing.T) {
 
 func TestSrtToWebVtt(t *testing.T) {
 	patterns := map[string]string{
-		"2\n00:00:02,147 --> 00:00:04,257\nOh, look at all\nthat chest hair.\n\n":           "00:02.147 --> 00:04.257\nOh, look at all\nthat chest hair.\n\n",
-		"2\r\n00:00:02,147 --> 00:00:04,257\r\nOh, look at all\r\nthat chest hair.\r\n\r\n": "00:02.147 --> 00:04.257\nOh, look at all\nthat chest hair.\n\n",
-		"2\n00:00:02,147 --> 00:00:04,257\n♪♪♪♪\n\n":                                        "00:02.147 --> 00:04.257\n♪♪♪♪\n\n",
+		"2\n00:00:02,147 --> 00:00:04,257\nOh, look at all\nthat chest hair.\n\n":             "00:02.147 --> 00:04.257\nOh, look at all\nthat chest hair.\n\n",
+		"2\r\n00:00:02,147 --> 00:00:04,257\r\nOh, look at all\r\nthat chest hair.\r\n\r\n":   "00:02.147 --> 00:04.257\nOh, look at all\nthat chest hair.\n\n",
+		"2\n00:00:02,147 --> 00:00:04,257\n♪♪♪♪\n\n":                                          "00:02.147 --> 00:04.257\n♪♪♪♪\n\n",
+		"2\n00:00:02,147 --> 00:00:04,257\nTom & Jerry\n\n":                                   "00:02.147 --> 00:04.257\nTom &amp; Jerry\n\n",
+		"2\n00:00:02,147 --> 00:00:04,257\n<b>Syn<font color=#FF0000>Red</font>: Hat</b>\n\n": "00:02.147 --> 00:04.257\n<b>Syn<b>Red</b>: Hat</b>\n\n",
 	}
+
 	for k, v := range patterns {
 		result, err := SrtToWebVtt(k)
 		if err != nil {
